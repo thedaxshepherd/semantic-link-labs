@@ -12,6 +12,7 @@ from uuid import UUID
 import sempy_labs._icons as icons
 from sempy.fabric.exceptions import FabricHTTPException
 import urllib.parse
+from azure.core.credentials import TokenCredential, AccessToken
 
 
 def create_abfss_path(
@@ -868,3 +869,44 @@ def resolve_deployment_pipeline_id(deployment_pipeline: str) -> UUID:
     deployment_pipeline_id = dfP_filt["Deployment Pipeline Id"].iloc[0]
 
     return deployment_pipeline_id
+
+
+class FabricTokenCredential(TokenCredential):
+
+    def get_token(
+        self,
+        scopes: str,
+        claims: Optional[str] = None,
+        tenant_id: Optional[str] = None,
+        enable_cae: Optional[bool] = False,
+        **kwargs: any,
+    ) -> AccessToken:
+
+        from notebookutils import mssparkutils
+        token = mssparkutils.credentials.getToken(scopes)
+        access_token = AccessToken(token, 0)
+
+        return access_token
+
+
+def get_adls_client(account_name):
+
+    from azure.storage.filedatalake import DataLakeServiceClient
+
+    account_url = f"https://{account_name}.dfs.core.windows.net"
+
+    service_client = DataLakeServiceClient(
+        account_url, credential=FabricTokenCredential()
+    )
+
+    return service_client
+
+
+def resolve_warehouse_id(warehouse: str, workspace: Optional[str]):
+
+    workspace = fabric.resolve_workspace_name(workspace)
+    warehouse_id = fabric.resolve_item_id(
+        item_name=warehouse, type="Warehouse", workspace=workspace
+    )
+
+    return warehouse_id

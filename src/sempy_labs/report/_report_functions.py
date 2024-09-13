@@ -3,24 +3,21 @@ import pandas as pd
 import json
 import os
 import time
-import base64
 import copy
 from anytree import Node, RenderTree
 from powerbiclient import Report
-from synapse.ml.services import Translate
 from pyspark.sql.functions import col, flatten
-from pyspark.sql import SparkSession
 from sempy_labs.report._generate_report import update_report_from_reportjson
 from sempy_labs.lakehouse._lakehouse import lakehouse_attached
 from sempy_labs._helper_functions import (
     generate_embedded_filter,
-    resolve_dataset_name,
     resolve_report_id,
     resolve_lakehouse_name,
     language_validate,
     resolve_workspace_name_and_id,
     lro,
     _decode_b64,
+    resolve_dataset_id,
 )
 from typing import List, Optional, Union
 from sempy._utils._log import log
@@ -405,6 +402,7 @@ def clone_report(
     workspace: Optional[str] = None,
     target_workspace: Optional[str] = None,
     target_dataset: Optional[str] = None,
+    target_dataset_workspace: Optional[str] = None,
 ):
     """
     Clones a Power BI report.
@@ -426,6 +424,9 @@ def clone_report(
     target_dataset : str, default=None
         The name of the semantic model to be used by the cloned report.
         Defaults to None which resolves to the semantic model used by the initial report.
+    target_dataset_workspace : str, default=None
+        The workspace in which the semantic model to be used by the report resides.
+        Defaults to None which resolves to the semantic model used by the initial report.
     """
 
     # https://learn.microsoft.com/rest/api/power-bi/reports/clone-report-in-group
@@ -446,48 +447,25 @@ def clone_report(
         target_workspace = workspace
         target_workspace_id = workspace_id
     else:
-        dfW = fabric.list_workspaces()
-        dfW_filt = dfW[dfW["Name"] == target_workspace]
+        target_workspace_id = fabric.resolve_workspace_id(target_workspace)
 
-        if len(dfW_filt) == 0:
-            raise ValueError(
-                f"{icons.red_dot} The '{workspace}' is not a valid workspace."
-            )
+    if target_dataset is not None:
+        if target_dataset_workspace is None:
+            target_dataset_workspace = workspace
+        target_dataset_id = resolve_dataset_id(target_dataset, target_dataset_workspace)
 
-        target_workspace_id = dfW_filt["Id"].iloc[0]
-
-    if target_dataset is None:
-        dfR = fabric.list_reports(workspace=target_workspace)
-        dfR_filt = dfR[dfR["Name"] == report]
-        target_dataset_id = dfR_filt["Dataset Id"].iloc[0]
-        target_dataset = resolve_dataset_name(
-            dataset_id=target_dataset_id, workspace=target_workspace
+    if report == cloned_report and workspace == target_workspace:
+        raise ValueError(
+            f"{icons.warning} The 'report' and 'cloned_report' parameters have the same value of '{report}. The 'workspace' and 'target_workspace' have the same value of '{workspace}'. Either the 'cloned_report' or the 'target_workspace' must be different from the original report."
         )
-    else:
-        dfD = fabric.list_datasets(workspace=target_workspace)
-        dfD_filt = dfD[dfD["Dataset Name"] == target_dataset]
-
-        if len(dfD_filt) == 0:
-            raise ValueError(
-                f"{icons.red_dot} The '{target_dataset}' target dataset does not exist in the '{target_workspace}' workspace."
-            )
-
-        target_dataset_id = dfD_filt["Dataset Id"].iloc[0]
 
     client = fabric.PowerBIRestClient()
 
-    if target_workspace is None and target_dataset is None:
-        request_body = {"name": cloned_report}
-    elif target_workspace is not None and target_dataset is None:
-        request_body = {"name": cloned_report, "targetWorkspaceId": target_workspace_id}
-    elif target_workspace is not None and target_dataset is not None:
-        request_body = {
-            "name": cloned_report,
-            "targetModelId": target_dataset_id,
-            "targetWorkspaceId": target_workspace_id,
-        }
-    elif target_workspace is None and target_dataset is not None:
-        request_body = {"name": cloned_report, "targetModelId": target_dataset_id}
+    request_body = {"name": cloned_report}
+    if target_dataset is not None:
+        request_body["targetModelId"] = target_dataset_id
+    if target_workspace != workspace:
+        request_body["targetWorkspaceId"] = target_workspace_id
 
     response = client.post(
         f"/v1.0/myorg/groups/{workspace_id}/reports/{reportId}/Clone", json=request_body
@@ -496,8 +474,7 @@ def clone_report(
     if response.status_code != 200:
         raise FabricHTTPException(response)
     print(
-        f"{icons.green_dot} The '{report}' report has been successfully cloned as the '{cloned_report}' report within the"
-        f" '{target_workspace}' workspace using the '{target_dataset}' semantic model."
+        f"{icons.green_dot} The '{report}' report has been successfully cloned as the '{cloned_report}' report within the '{target_workspace}' workspace."
     )
 
 
@@ -756,6 +733,8 @@ def translate_report_titles(
         Defaults to None which resolves to the workspace of the attached lakehouse
         or if no lakehouse attached, resolves to the workspace of the notebook.
     """
+    from synapse.ml.services import Translate
+    from pyspark.sql import SparkSession
 
     if isinstance(languages, str):
         languages = [languages]

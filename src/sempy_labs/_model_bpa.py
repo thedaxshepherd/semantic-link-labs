@@ -21,7 +21,6 @@ from sempy._utils._log import log
 import sempy_labs._icons as icons
 from pyspark.sql.functions import col, flatten
 from pyspark.sql.types import StructType, StructField, StringType
-import polib
 import os
 
 
@@ -64,8 +63,8 @@ def run_model_bpa(
     pandas.DataFrame
         A pandas dataframe in HTML format showing semantic model objects which violated the best practice analyzer rules.
     """
-
-    from synapse.ml.services import Translate
+    
+    import polib
 
     if "extend" in kwargs:
         print(
@@ -108,6 +107,7 @@ def run_model_bpa(
         "zu-ZA",
         "am-ET",
         "ar-AE",
+        "sv-SE",
     ]
 
     # Map languages to the closest language (first 2 letters matching)
@@ -162,86 +162,86 @@ def run_model_bpa(
                             entry.msgstr
                         )
 
-        def translate_using_spark(rule_file):
-            rules_temp = rule_file.copy()
-            rules_temp = rules_temp.drop(["Expression", "URL", "Severity"], axis=1)
-
-            schema = StructType(
-                [
-                    StructField("Category", StringType(), True),
-                    StructField("Scope", StringType(), True),
-                    StructField("Rule Name", StringType(), True),
-                    StructField("Description", StringType(), True),
-                ]
-            )
-
-            spark = SparkSession.builder.getOrCreate()
-            dfRules = spark.createDataFrame(rules_temp, schema)
-
-            columns = ["Category", "Rule Name", "Description"]
-            for clm in columns:
-                translate = (
-                    Translate()
-                    .setTextCol(clm)
-                    .setToLanguage(language)
-                    .setOutputCol("translation")
-                    .setConcurrency(5)
-                )
-
-                if clm == "Rule Name":
-                    transDF = (
-                        translate.transform(dfRules)
-                        .withColumn(
-                            "translation", flatten(col("translation.translations"))
-                        )
-                        .withColumn("translation", col("translation.text"))
-                        .select(clm, "translation")
-                    )
-                else:
-                    transDF = (
-                        translate.transform(dfRules)
-                        .withColumn(
-                            "translation", flatten(col("translation.translations"))
-                        )
-                        .withColumn("translation", col("translation.text"))
-                        .select("Rule Name", clm, "translation")
-                    )
-
-                df_panda = transDF.toPandas()
-                rule_file = pd.merge(
-                    rule_file,
-                    df_panda[["Rule Name", "translation"]],
-                    on="Rule Name",
-                    how="left",
-                )
-
-                rule_file = rule_file.rename(
-                    columns={"translation": f"{clm}Translated"}
-                )
-                rule_file[f"{clm}Translated"] = rule_file[f"{clm}Translated"].apply(
-                    lambda x: x[0] if x is not None else None
-                )
-
-            for clm in columns:
-                rule_file = rule_file.drop([clm], axis=1)
-                rule_file = rule_file.rename(columns={f"{clm}Translated": clm})
-
-            return rule_file
-
         translated = False
 
         # Translations
         if language is not None and rules is None and language in language_list:
-            rules = model_bpa_rules(
-                dataset=dataset, workspace=workspace, dependencies=dep
-            )
+            rules = model_bpa_rules(dependencies=dep)
             translate_using_po(rules)
             translated = True
         if rules is None:
-            rules = model_bpa_rules(
-                dataset=dataset, workspace=workspace, dependencies=dep
-            )
+            rules = model_bpa_rules(dependencies=dep)
         if language is not None and not translated:
+
+            def translate_using_spark(rule_file):
+
+                from synapse.ml.services import Translate
+
+                rules_temp = rule_file.copy()
+                rules_temp = rules_temp.drop(["Expression", "URL", "Severity"], axis=1)
+
+                schema = StructType(
+                    [
+                        StructField("Category", StringType(), True),
+                        StructField("Scope", StringType(), True),
+                        StructField("Rule Name", StringType(), True),
+                        StructField("Description", StringType(), True),
+                    ]
+                )
+
+                spark = SparkSession.builder.getOrCreate()
+                dfRules = spark.createDataFrame(rules_temp, schema)
+
+                columns = ["Category", "Rule Name", "Description"]
+                for clm in columns:
+                    translate = (
+                        Translate()
+                        .setTextCol(clm)
+                        .setToLanguage(language)
+                        .setOutputCol("translation")
+                        .setConcurrency(5)
+                    )
+
+                    if clm == "Rule Name":
+                        transDF = (
+                            translate.transform(dfRules)
+                            .withColumn(
+                                "translation", flatten(col("translation.translations"))
+                            )
+                            .withColumn("translation", col("translation.text"))
+                            .select(clm, "translation")
+                        )
+                    else:
+                        transDF = (
+                            translate.transform(dfRules)
+                            .withColumn(
+                                "translation", flatten(col("translation.translations"))
+                            )
+                            .withColumn("translation", col("translation.text"))
+                            .select("Rule Name", clm, "translation")
+                        )
+
+                    df_panda = transDF.toPandas()
+                    rule_file = pd.merge(
+                        rule_file,
+                        df_panda[["Rule Name", "translation"]],
+                        on="Rule Name",
+                        how="left",
+                    )
+
+                    rule_file = rule_file.rename(
+                        columns={"translation": f"{clm}Translated"}
+                    )
+                    rule_file[f"{clm}Translated"] = rule_file[f"{clm}Translated"].apply(
+                        lambda x: x[0] if x is not None else None
+                    )
+
+                for clm in columns:
+                    rule_file = rule_file.drop([clm], axis=1)
+                    rule_file = rule_file.rename(columns={f"{clm}Translated": clm})
+
+                return rule_file
+
             rules = translate_using_spark(rules)
 
         rules["Severity"].replace("Warning", icons.warning, inplace=True)
@@ -302,26 +302,28 @@ def run_model_bpa(
 
                 if scope == "Model":
                     x = []
-                    if expr(func):
+                    if expr(func, tom):
                         x = ["Model"]
                 elif scope == "Measure":
-                    x = [nm(obj) for obj in tom.all_measures() if expr(obj)]
+                    x = [nm(obj) for obj in tom.all_measures() if expr(obj, tom)]
                 elif scope == "Column":
-                    x = [nm(obj) for obj in tom.all_columns() if expr(obj)]
+                    x = [nm(obj) for obj in tom.all_columns() if expr(obj, tom)]
                 elif scope == "Partition":
-                    x = [nm(obj) for obj in tom.all_partitions() if expr(obj)]
+                    x = [nm(obj) for obj in tom.all_partitions() if expr(obj, tom)]
                 elif scope == "Hierarchy":
-                    x = [nm(obj) for obj in tom.all_hierarchies() if expr(obj)]
+                    x = [nm(obj) for obj in tom.all_hierarchies() if expr(obj, tom)]
                 elif scope == "Table":
-                    x = [nm(obj) for obj in tom.model.Tables if expr(obj)]
+                    x = [nm(obj) for obj in tom.model.Tables if expr(obj, tom)]
                 elif scope == "Relationship":
-                    x = [nm(obj) for obj in tom.model.Relationships if expr(obj)]
+                    x = [nm(obj) for obj in tom.model.Relationships if expr(obj, tom)]
                 elif scope == "Role":
-                    x = [nm(obj) for obj in tom.model.Roles if expr(obj)]
+                    x = [nm(obj) for obj in tom.model.Roles if expr(obj, tom)]
                 elif scope == "Row Level Security":
-                    x = [nm(obj) for obj in tom.all_rls() if expr(obj)]
+                    x = [nm(obj) for obj in tom.all_rls() if expr(obj, tom)]
                 elif scope == "Calculation Item":
-                    x = [nm(obj) for obj in tom.all_calculation_items() if expr(obj)]
+                    x = [
+                        nm(obj) for obj in tom.all_calculation_items() if expr(obj, tom)
+                    ]
 
                 if len(x) > 0:
                     new_data = {"Object Name": x, "Scope": scope, "Rule Name": ruleName}

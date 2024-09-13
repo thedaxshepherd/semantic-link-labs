@@ -1,3 +1,7 @@
+from sempy_labs._sql import(
+    ConnectWarehouse,
+)
+
 from sempy_labs._workspace_identity import (
     provision_workspace_identity,
     deprovision_workspace_identity,
@@ -26,6 +30,8 @@ from sempy_labs._clear_cache import (
     backup_semantic_model,
     restore_semantic_model,
     copy_semantic_model_backup_file,
+    list_backups,
+    list_storage_account_files,
 )
 
 # from sempy_labs._connections import (
@@ -39,6 +45,8 @@ from sempy_labs._generate_semantic_model import (
     create_semantic_model_from_bim,
     deploy_semantic_model,
     get_semantic_model_bim,
+    get_semantic_model_size,
+    update_semantic_model_from_bim,
 )
 from sempy_labs._list_functions import (
     list_reports_using_semantic_model,
@@ -83,6 +91,7 @@ from sempy_labs._list_functions import (
 )
 
 from sempy_labs._helper_functions import (
+    resolve_warehouse_id,
     resolve_workspace_capacity,
     create_abfss_path,
     format_dax_object_name,
@@ -140,10 +149,16 @@ from sempy_labs._vertipaq import (
 )
 
 __all__ = [
+    "resolve_warehouse_id",
+    "ConnectWarehouse",
+    "update_semantic_model_from_bim",
+    "get_semantic_model_size",
     "provision_workspace_identity",
     "deprovision_workspace_identity",
     "list_dataflows",
     "copy_semantic_model_backup_file",
+    "list_backups",
+    "list_storage_account_files",
     "backup_semantic_model",
     "restore_semantic_model",
     "delete_custom_pool",

@@ -1,7 +1,7 @@
 # Semantic Link Labs
 
 [![PyPI version](https://badge.fury.io/py/semantic-link-labs.svg)](https://badge.fury.io/py/semantic-link-labs)
-[![Read The Docs](https://readthedocs.org/projects/semantic-link-labs/badge/?version=0.7.2&style=flat)](https://readthedocs.org/projects/semantic-link-labs/)
+[![Read The Docs](https://readthedocs.org/projects/semantic-link-labs/badge/?version=0.7.3&style=flat)](https://readthedocs.org/projects/semantic-link-labs/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Downloads](https://static.pepy.tech/badge/semantic-link-labs)](https://pepy.tech/project/semantic-link-labs)
 
@@ -29,6 +29,7 @@ from sempy_labs import migration, directlake
 from sempy_labs import lakehouse as lake
 from sempy_labs import report as rep
 from sempy_labs.tom import connect_semantic_model
+from sempy_labs import ConnectWarehouse
 ```
 
 ## Load semantic-link-labs into a custom [Fabric environment](https://learn.microsoft.com/fabric/data-engineering/create-and-use-environment)
