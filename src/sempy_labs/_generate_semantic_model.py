@@ -45,7 +45,7 @@ def create_blank_semantic_model(
 
     if len(dfD_filt) > 0 and not overwrite:
         raise ValueError(
-            f"{icons.warning} The '{dataset}' semantic model already exists within the '{workspace}' workspace. The 'overwrite' parameter is set to False so the blank new semantic model was not created."
+            f"{icons.warning} The '{dataset}' DataSet already exists within the '{workspace}' workspace. The 'overwrite' parameter is set to False so the blank new semantic model was not created."
         )
 
     min_compat = 1500
